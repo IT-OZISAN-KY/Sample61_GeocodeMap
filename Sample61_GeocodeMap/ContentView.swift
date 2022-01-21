@@ -33,20 +33,6 @@ struct ContentView: View {
                     }
                 }
             }
-            // geocodeAddressStringの場合
-            /*
-            CLGeocoder().geocodeAddressString(addressName) { placemarks, error in
-                if let lat = placemarks?.first?.location?.coordinate.latitude,
-                   let lng = placemarks?.first?.location?.coordinate.longitude
-                {
-                    if mapBind != nil {
-                        mapBind!.setCenter(CLLocationCoordinate2D(latitude: lat, longitude: lng), animated: true)
-                        print("緯度 : \(lat)")
-                        print("経度 : \(lng)")
-                    }
-                }
-            }
-             */
         }).padding(.all, 5)
             .overlay(
                 RoundedRectangle(cornerRadius: 2)
