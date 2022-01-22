@@ -21,34 +21,8 @@ struct ContentView: View {
     @State var alert = false
     @State var mapBind: MKMapView?
     @State var searchViewType: SearchViewType = .initial    // 検索画面のタイプ：初期画面
-    /*
-    @State var searchDetailOn = false               // 検索詳細画面を表示
-    @State var suggestOn = false                    // マップ候補を表示
-     */
     @State var mapSuggestItems: [MKMapItem] = []    // マップ候補リスト
     
-    // 場所の検索
-    func searchSpot(){
-        if let region = mapBind?.region {
-            mapSearch(query: addressName, region: region){ response in
-                // ２個以上の場合は、候補を表示
-                if response.count > 1 {
-                    self.mapSuggestItems = response
-                    searchViewType = .suggest
-                    // suggestOn = true
-                }else if response.count == 1 {
-                    showSpot(mapItem: response[0])
-                }
-            }
-        }
-    }
-    // 検索画面の初期設定
-    func searchViewInit(){
-        // 編集状態をキャンセル
-        UIApplication.shared.endEditing()
-        // 検索画面を初期画面に
-        searchViewType = .initial
-    }
     var body: some View {
         HStack {
             // ジャンル選択
@@ -129,6 +103,28 @@ struct ContentView: View {
                 }.background(Color.white)
             }
         }
+    }
+    // 場所の検索
+    func searchSpot(){
+        if let region = mapBind?.region {
+            mapSearch(query: addressName, region: region){ response in
+                // ２個以上の場合は、候補を表示
+                if response.count > 1 {
+                    self.mapSuggestItems = response
+                    searchViewType = .suggest
+                    // suggestOn = true
+                }else if response.count == 1 {
+                    showSpot(mapItem: response[0])
+                }
+            }
+        }
+    }
+    // 検索画面の初期設定
+    func searchViewInit(){
+        // 編集状態をキャンセル
+        UIApplication.shared.endEditing()
+        // 検索画面を初期画面に
+        searchViewType = .initial
     }
     // 検索場所の表示
     func showSpot(mapItem: MKMapItem){
