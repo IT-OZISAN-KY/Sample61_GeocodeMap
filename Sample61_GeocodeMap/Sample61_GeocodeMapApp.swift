@@ -11,7 +11,8 @@ import SwiftUI
 struct Sample61_GeocodeMapApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            let locationSearchService = LocationSearchService()
+            ContentView(locationSearchService: locationSearchService)
         }
     }
 }

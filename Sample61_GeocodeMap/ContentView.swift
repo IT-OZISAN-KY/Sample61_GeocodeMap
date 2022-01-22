@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreLocation
 import MapKit
+import Combine
 
 // 検索画面のタイプ
 enum SearchViewType: Int {
@@ -17,44 +18,30 @@ enum SearchViewType: Int {
 }
 struct ContentView: View {
     @State var manager = CLLocationManager()
-    @State var addressName: String = ""
+    @State var searchString: String = ""            // 検索文字列
     @State var alert = false
     @State var mapBind: MKMapView?
-    @State var searchViewType: SearchViewType = .initial    // 検索画面のタイプ：初期画面
     @State var mapSuggestItems: [MKMapItem] = []    // マップ候補リスト
+    @ObservedObject var locationSearchService: LocationSearchService
     
     var body: some View {
         HStack {
             // ジャンル選択
-            if searchViewType == .initial {
+            if locationSearchService.searchViewType == .initial {
                 Button("ジャンル"){
                     print("ジャンル")
                 }
             }
             // 場所入力
-            TextField("行きたい場所を入力", text: $addressName,
-                onEditingChanged: {changed in
-                    // 検索詳細画面を表示
-                    searchViewType = .detail
-                },
-                onCommit: {
-                    // 場所の検索
-                    searchSpot()
-                })
-                .modifier(ClearButton(text: $addressName))
-                .padding(.all, 5)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(Color.blue, lineWidth: 2)
-                ).padding(.all, 5)
+            SearchBar(locationSearchService: locationSearchService)
             // 距離
-            if searchViewType == .initial {
+            if locationSearchService.searchViewType == .initial {
                 Button("5km"){
                     print("距離")
                 }
             }
             // キャンセル
-            if searchViewType != .initial {
+            if locationSearchService.searchViewType != .initial {
                 Button("キャンセル"){
                     // 初期画面に戻す
                     searchViewInit()
@@ -63,96 +50,75 @@ struct ContentView: View {
         }
         ZStack(alignment: .top) {
             // 地図の表示
-            MapView(mapBind: $mapBind).alert(isPresented: $alert) {
+            MapView(mapBind: $mapBind, locationSearchService: locationSearchService).alert(isPresented: $alert) {
                 Alert(title: Text("Please Enable Location Access In Setting Panel!!!"))
             }
             // 検索詳細画面の表示
-            if searchViewType == .detail {
-                List {
-                    Text("現在地から探す >")
-                        .onTapGesture{
-                            // 初期画面に戻す
-                            searchViewInit()
-                        }
-                    Text("テーマから探す >")
-                        .onTapGesture{
-                            // 初期画面に戻す
-                            searchViewInit()
-                        }
-                    Text("エリアから探す >")
-                        .onTapGesture{
-                            // 初期画面に戻す
-                            searchViewInit()
-                        }
-                }
+            if locationSearchService.searchViewType == .detail {
+                SearchDetailView
             }
             // 検索候補の表示
-            else if searchViewType == .suggest {
-                List {
-                    ForEach(mapSuggestItems, id: \.self) { mapItem in
-                        if let name = mapItem.name {
-                            Text(name)
-                                .onTapGesture{
-                                    // タップで、位置を表示
-                                    showSpot(mapItem: mapItem)
-                                    // 文字列を設定
-                                    addressName = name
-                                }
-                        }
-                    }
-                }.background(Color.white)
+            else if locationSearchService.searchViewType == .suggest {
+                SearchSuggestView
             }
         }
     }
-    // 場所の検索
-    func searchSpot(){
-        if let region = mapBind?.region {
-            mapSearch(query: addressName, region: region){ response in
-                // ２個以上の場合は、候補を表示
-                if response.count > 1 {
-                    self.mapSuggestItems = response
-                    searchViewType = .suggest
-                    // suggestOn = true
-                }else if response.count == 1 {
-                    showSpot(mapItem: response[0])
+    // 検索詳細画面
+    var SearchDetailView: some View {
+        List {
+            Text("現在地から探す >")
+                .onTapGesture{
+                    // 初期画面に戻す
+                    searchViewInit()
                 }
-            }
+            Text("テーマから探す >")
+                .onTapGesture{
+                    // 初期画面に戻す
+                    searchViewInit()
+                }
+            Text("エリアから探す >")
+                .onTapGesture{
+                    // 初期画面に戻す
+                    searchViewInit()
+                }
         }
+    }
+    // 検索候補画面
+    var SearchSuggestView: some View {
+        List(locationSearchService.completions) { completion in
+            VStack(alignment: .leading) {
+                Text(completion.title)
+                Text(completion.subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }.onTapGesture{
+                let request = MKLocalSearch.Request(completion: completion)
+                MKLocalSearch(request: request).start { (response, error) in
+                    if  error != nil{
+                        return
+                    }
+                    // 場所の検索
+                    if response?.mapItems != nil && response!.mapItems.count > 0 {
+                        let coordinate = response!.mapItems[0].placemark.coordinate
+                        mapBind!.setCenter(coordinate, animated: false)
+                    }
+                }
+                // 初期画面に戻す
+                searchViewInit()
+            }
+        }.navigationBarTitle(Text("Search near me"))
     }
     // 検索画面の初期設定
     func searchViewInit(){
         // 編集状態をキャンセル
         UIApplication.shared.endEditing()
         // 検索画面を初期画面に
-        searchViewType = .initial
-    }
-    // 検索場所の表示
-    func showSpot(mapItem: MKMapItem){
-        let coordinate = mapItem.placemark.coordinate
-        mapBind!.setCenter(coordinate, animated: true)
-        // 初期画面に戻す
-        searchViewInit()
-    }
-    // 地図の検索
-    func mapSearch(query: String, region: MKCoordinateRegion? = nil, completion: (([MKMapItem]) -> Void)?) {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-
-        if let region = region {
-            request.region = region
-        }
-
-        MKLocalSearch(request: request).start { (response, error) in
-            if let error = error {
-                completion!([])
-                return
-            }
-            completion!(response?.mapItems ?? [])
-        }
+        locationSearchService.searchViewType = .initial
     }
 }
 struct MapView: UIViewRepresentable {
     @Binding var mapBind: MKMapView?
+    @ObservedObject var locationSearchService: LocationSearchService    // マップ検索
     
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView(frame: .zero)
@@ -181,6 +147,8 @@ struct MapView: UIViewRepresentable {
         // MAPのロード後
         func mapViewDidFinishLoadingMap(_ mapView: MKMapView) {
             parent.mapBind = mapView
+            // マップの検索に設定
+            parent.locationSearchService.mapView = mapView
         }
     }
 }
@@ -216,3 +184,77 @@ struct ClearButton: ViewModifier
         }
     }
 }
+// 検索バー画面
+struct SearchBar: UIViewRepresentable {
+    // 引数
+    @ObservedObject var locationSearchService: LocationSearchService    // ローカル検索
+    
+    class Coordinator: NSObject, UISearchBarDelegate {
+        @ObservedObject var locationSearchService: LocationSearchService
+        // 初期化
+        init(locationSearchService: LocationSearchService) {
+            self.locationSearchService = locationSearchService
+        }
+        // テキストの変更
+        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+            // 検索文字列を設定
+            locationSearchService.searchQuery = searchText
+            // 候補画面を表示
+            if locationSearchService.searchViewType != .suggest {
+                locationSearchService.searchViewType = .suggest
+            }
+        }
+        // フォーカス設定
+        func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+            // 検索詳細画面を表示
+            if locationSearchService.searchViewType != .detail {
+                locationSearchService.searchViewType = .detail
+            }
+            // 検索範囲を設定
+            if let region = locationSearchService.mapView?.region {
+                locationSearchService.setRegion(region: region)
+            }
+        }
+    }
+
+    func makeCoordinator() -> SearchBar.Coordinator {
+        return Coordinator(locationSearchService: locationSearchService)
+    }
+
+    func makeUIView(context: UIViewRepresentableContext<SearchBar>) -> UISearchBar {
+        let searchBar = UISearchBar(frame: .zero)
+        searchBar.delegate = context.coordinator
+        searchBar.searchBarStyle = .minimal
+        return searchBar
+    }
+
+    func updateUIView(_ uiView: UISearchBar, context: UIViewRepresentableContext<SearchBar>) {
+        uiView.text = locationSearchService.searchQuery
+    }
+}
+
+class LocationSearchService: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+    @Published var searchQuery = ""
+    var completer: MKLocalSearchCompleter
+    @Published var completions: [MKLocalSearchCompletion] = []
+    var cancellable: AnyCancellable?
+    @Published var searchViewType: SearchViewType = .initial    // 検索画面のタイプ：初期画面
+    var mapView: MKMapView?     // マップデータ
+    
+    override init() {
+        completer = MKLocalSearchCompleter()
+        super.init()
+        cancellable = $searchQuery.assign(to: \.queryFragment, on: self.completer)
+        completer.delegate = self
+    }
+    
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        self.completions = completer.results
+    }
+    // 範囲の設定
+    func setRegion(region: MKCoordinateRegion) {
+        completer.region = region
+    }
+}
+
+extension MKLocalSearchCompletion: Identifiable {}
