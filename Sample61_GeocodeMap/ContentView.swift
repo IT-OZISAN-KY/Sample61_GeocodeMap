@@ -9,44 +9,113 @@ import SwiftUI
 import CoreLocation
 import MapKit
 
+// 検索画面のタイプ
+enum SearchViewType: Int {
+    case initial = 0    // 初期画面
+    case detail = 1     // 詳細画面
+    case suggest = 2    // 候補画面
+}
 struct ContentView: View {
     @State var manager = CLLocationManager()
     @State var addressName: String = ""
     @State var alert = false
     @State var mapBind: MKMapView?
-    @State var suggestOn = false
-    @State var mapItems: [MKMapItem] = []
+    @State var searchViewType: SearchViewType = .initial    // 検索画面のタイプ：初期画面
+    /*
+    @State var searchDetailOn = false               // 検索詳細画面を表示
+    @State var suggestOn = false                    // マップ候補を表示
+     */
+    @State var mapSuggestItems: [MKMapItem] = []    // マップ候補リスト
     
-    var body: some View {
-        // 場所入力
-        TextField("行きたい場所を入力", text: $addressName, onCommit: {
-            print("場所＝\(addressName)")
-            // MKLocalSearchの場合
-            if let region = mapBind?.region {
-                mapSearch(query: addressName, region: region){ response in
-                    // ２個以上の場合は、候補を表示
-                    if response.count > 1 {
-                        self.mapItems = response
-                        suggestOn = true
-                    }else if response.count == 1 {
-                        showSpot(mapItem: response[0])
-                    }
+    // 場所の検索
+    func searchSpot(){
+        if let region = mapBind?.region {
+            mapSearch(query: addressName, region: region){ response in
+                // ２個以上の場合は、候補を表示
+                if response.count > 1 {
+                    self.mapSuggestItems = response
+                    searchViewType = .suggest
+                    // suggestOn = true
+                }else if response.count == 1 {
+                    showSpot(mapItem: response[0])
                 }
             }
-        }).padding(.all, 5)
-            .overlay(
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(Color.blue, lineWidth: 2)
-            ).padding(.all, 5)
+        }
+    }
+    // 検索画面の初期設定
+    func searchViewInit(){
+        // 編集状態をキャンセル
+        UIApplication.shared.endEditing()
+        // 検索画面を初期画面に
+        searchViewType = .initial
+    }
+    var body: some View {
+        HStack {
+            // ジャンル選択
+            if searchViewType == .initial {
+                Button("ジャンル"){
+                    print("ジャンル")
+                }
+            }
+            // 場所入力
+            TextField("行きたい場所を入力", text: $addressName,
+                onEditingChanged: {changed in
+                    // 検索詳細画面を表示
+                    searchViewType = .detail
+                },
+                onCommit: {
+                    // 場所の検索
+                    searchSpot()
+                })
+                .modifier(ClearButton(text: $addressName))
+                .padding(.all, 5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(Color.blue, lineWidth: 2)
+                ).padding(.all, 5)
+            // 距離
+            if searchViewType == .initial {
+                Button("5km"){
+                    print("距離")
+                }
+            }
+            // キャンセル
+            if searchViewType != .initial {
+                Button("キャンセル"){
+                    // 初期画面に戻す
+                    searchViewInit()
+                }
+            }
+        }
         ZStack(alignment: .top) {
             // 地図の表示
             MapView(mapBind: $mapBind).alert(isPresented: $alert) {
                 Alert(title: Text("Please Enable Location Access In Setting Panel!!!"))
             }
-            // 検索候補の表示
-            if suggestOn {
+            // 検索詳細画面の表示
+            if searchViewType == .detail {
                 List {
-                    ForEach(mapItems, id: \.self) { mapItem in
+                    Text("現在地から探す >")
+                        .onTapGesture{
+                            // 初期画面に戻す
+                            searchViewInit()
+                        }
+                    Text("テーマから探す >")
+                        .onTapGesture{
+                            // 初期画面に戻す
+                            searchViewInit()
+                        }
+                    Text("エリアから探す >")
+                        .onTapGesture{
+                            // 初期画面に戻す
+                            searchViewInit()
+                        }
+                }
+            }
+            // 検索候補の表示
+            else if searchViewType == .suggest {
+                List {
+                    ForEach(mapSuggestItems, id: \.self) { mapItem in
                         if let name = mapItem.name {
                             Text(name)
                                 .onTapGesture{
@@ -65,7 +134,8 @@ struct ContentView: View {
     func showSpot(mapItem: MKMapItem){
         let coordinate = mapItem.placemark.coordinate
         mapBind!.setCenter(coordinate, animated: true)
-        suggestOn = false
+        // 初期画面に戻す
+        searchViewInit()
     }
     // 地図の検索
     func mapSearch(query: String, region: MKCoordinateRegion? = nil, completion: (([MKMapItem]) -> Void)?) {
@@ -115,6 +185,38 @@ struct MapView: UIViewRepresentable {
         // MAPのロード後
         func mapViewDidFinishLoadingMap(_ mapView: MKMapView) {
             parent.mapBind = mapView
+        }
+    }
+}
+// 編集を終了
+extension UIApplication {
+    func endEditing() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+// クリアボタン
+struct ClearButton: ViewModifier
+{
+    @Binding var text: String
+
+    public func body(content: Content) -> some View
+    {
+        ZStack(alignment: .trailing)
+        {
+            content
+
+            if !text.isEmpty
+            {
+                Button(action:
+                {
+                    self.text = ""
+                })
+                {
+                    Image(systemName: "delete.left")
+                        .foregroundColor(Color(UIColor.opaqueSeparator))
+                }
+                .padding(.trailing, 8)
+            }
         }
     }
 }
